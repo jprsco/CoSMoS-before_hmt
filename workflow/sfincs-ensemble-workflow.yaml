@@ -1,0 +1,495 @@
+metadata:
+  name: sfincs-ensemble-workflow
+  namespace: argo
+  uid: 14be1a45-2c59-45ab-9cf0-248a0be80499
+  resourceVersion: '214267703'
+  generation: 30
+  creationTimestamp: '2023-08-08T19:07:51Z'
+  labels:
+    workflows.argoproj.io/creator: system-serviceaccount-argo-argo-server
+  managedFields:
+    - manager: argo
+      operation: Update
+      apiVersion: argoproj.io/v1alpha1
+      time: '2024-06-12T12:25:05Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:metadata:
+          f:labels:
+            .: {}
+            f:workflows.argoproj.io/creator: {}
+        f:spec: {}
+spec:
+  templates:
+    - name: ensembles
+      inputs: {}
+      outputs: {}
+      metadata: {}
+      steps:
+        - - name: readmembers
+            template: read-members
+            arguments: {}
+        - - name: makefolders
+            template: make-folders
+            arguments:
+              parameters:
+                - name: subfolder
+                  value: '{{workflow.parameters.subfolder}}'
+        - - name: runmodel
+            template: run-model
+            arguments:
+              parameters:
+                - name: member
+                  value: '{{item}}'
+            withParam: '{{steps.readmembers.outputs.result}}'
+        - - name: merge
+            template: merge-members
+            arguments: {}
+        - - name: tiles
+            template: map-tiles
+            arguments: {}
+        - - name: cleanup
+            template: clean-up
+            arguments: {}
+    - name: read-members
+      inputs:
+        artifacts:
+          - name: input-from-s3
+            path: /data
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}'
+            archive:
+              none: {}
+      outputs: {}
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: sfincs-2xlarge
+      metadata: {}
+      script:
+        name: ''
+        image: 012053003218.dkr.ecr.eu-west-1.amazonaws.com/boto3
+        command:
+          - python
+        workingDir: /data
+        resources: {}
+        source: |
+          # generate list of members
+          import json
+          with open('ensemble_members.txt') as f:
+              members = f.readlines()
+              members = [x.strip() for x in members]
+          print(json.dumps(members))
+      retryStrategy:
+        limit: '10'
+        retryPolicy: Always
+    - name: make-folders
+      inputs:
+        artifacts:
+          - name: input-from-s3
+            path: /input
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}'
+            archive:
+              none: {}
+      outputs:
+        artifacts:
+          - name: upload-to-s3
+            path: /input
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}'
+            archive:
+              none: {}
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: sfincs-2xlarge
+      metadata: {}
+      container:
+        name: ''
+        image: 012053003218.dkr.ecr.eu-west-1.amazonaws.com/run_job
+        command:
+          - python
+          - run_job_2.py
+          - prepare_ensemble
+        resources:
+          limits:
+            cpu: '6'
+            memory: 14Gi
+          requests:
+            cpu: '6'
+            memory: 14Gi
+      retryStrategy:
+        limit: '10'
+        retryPolicy: Always
+    - name: run-model
+      inputs:
+        parameters:
+          - name: member
+      outputs: {}
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: sfincs-2xlarge
+      metadata: {}
+      steps:
+        - - name: preparesimulation
+            template: prepare-simulation
+            arguments:
+              parameters:
+                - name: member
+                  value: '{{inputs.parameters.member}}'
+        - - name: runsimulation
+            template: run-simulation
+            arguments:
+              parameters:
+                - name: member
+                  value: '{{inputs.parameters.member}}'
+      retryStrategy:
+        limit: '10'
+        retryPolicy: Always
+    - name: prepare-simulation
+      inputs:
+        parameters:
+          - name: member
+        artifacts:
+          - name: my-art
+            path: /input
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}/{{inputs.parameters.member}}'
+            archive:
+              none: {}
+      outputs:
+        artifacts:
+          - name: my-art
+            path: /input
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}/{{inputs.parameters.member}}'
+            archive:
+              none: {}
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: sfincs-2xlarge
+      metadata: {}
+      container:
+        name: ''
+        image: 012053003218.dkr.ecr.eu-west-1.amazonaws.com/run_job
+        command:
+          - python
+          - run_job_2.py
+          - prepare_single
+          - '{{inputs.parameters.member}}'
+        resources:
+          limits:
+            cpu: '6'
+            memory: 14Gi
+          requests:
+            cpu: '6'
+            memory: 14Gi
+      retryStrategy:
+        limit: '10'
+        retryPolicy: Always
+    - name: run-simulation
+      inputs:
+        parameters:
+          - name: member
+        artifacts:
+          - name: my-art
+            path: /data
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}/{{inputs.parameters.member}}'
+            archive:
+              none: {}
+      outputs:
+        artifacts:
+          - name: my-art
+            path: /data
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}/{{inputs.parameters.member}}'
+            archive:
+              none: {}
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: sfincs-2xlarge
+      metadata: {}
+      container:
+        name: sfincs-cpu-argo
+        image: deltares/sfincs-cpu:sfincs-v2.0.3-Cauberg
+        command:
+          - /bin/bash
+          - '-c'
+          - '--'
+        args:
+          - sfincs
+        resources:
+          limits:
+            cpu: '6'
+            memory: 14Gi
+          requests:
+            cpu: '6'
+            memory: 14Gi
+      retryStrategy:
+        limit: '10'
+        retryPolicy: Always
+    - name: merge-members
+      inputs:
+        artifacts:
+          - name: input-from-s3
+            path: /input
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}'
+            archive:
+              none: {}
+      outputs:
+        artifacts:
+          - name: upload-to-s3
+            path: /output
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}'
+            archive:
+              none: {}
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: sfincs-2xlarge
+      metadata: {}
+      container:
+        name: ''
+        image: 012053003218.dkr.ecr.eu-west-1.amazonaws.com/run_job
+        command:
+          - python
+          - run_job_2.py
+          - merge_ensemble
+        resources:
+          limits:
+            cpu: '6'
+            memory: 14Gi
+          requests:
+            cpu: '6'
+            memory: 14Gi
+      retryStrategy:
+        limit: '10'
+        retryPolicy: Always
+    - name: map-tiles
+      inputs:
+        artifacts:
+          - name: input-from-s3
+            path: /input
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}'
+            archive:
+              none: {}
+          - name: tiles
+            path: /tiles
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-models
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.tilingfolder}}/tiles.tgz'
+      outputs:
+        artifacts:
+          - name: upload-flood_map-to-s3
+            path: >-
+              /output/{{workflow.parameters.scenario}}/{{workflow.parameters.cycle}}/flood_map_90
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}/tiles/flood_map_90.tgz'
+            archive:
+              tar: {}
+            optional: true
+          - name: upload-water_level-to-s3
+            path: >-
+              /output/{{workflow.parameters.scenario}}/{{workflow.parameters.cycle}}/water_level_90
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}/tiles/water_level_90.tgz'
+            archive:
+              tar: {}
+            optional: true
+          - name: upload-precipitation-to-s3
+            path: >-
+              /output/{{workflow.parameters.scenario}}/{{workflow.parameters.cycle}}/precipitation_90
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}/tiles/precipitation_90.tgz'
+            archive:
+              tar: {}
+            optional: true
+      nodeSelector:
+        alpha.eksctl.io/nodegroup-name: sfincs-2xlarge
+      metadata: {}
+      container:
+        name: ''
+        image: 012053003218.dkr.ecr.eu-west-1.amazonaws.com/run_job
+        command:
+          - python
+          - run_job_2.py
+          - map_tiles
+        resources:
+          limits:
+            cpu: '6'
+            memory: 14Gi
+          requests:
+            cpu: '6'
+            memory: 14Gi
+      retryStrategy:
+        limit: '10'
+        retryPolicy: Always
+    - name: clean-up
+      inputs:
+        artifacts:
+          - name: input-from-s3
+            path: /input
+            s3:
+              endpoint: s3.amazonaws.com
+              bucket: cosmos-scenarios
+              region: eu-west-1
+              accessKeySecret:
+                name: my-s3-credentials
+                key: accessKey
+              secretKeySecret:
+                name: my-s3-credentials
+                key: secretKey
+              key: '{{workflow.parameters.subfolder}}'
+            archive:
+              none: {}
+      outputs: {}
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: sfincs-2xlarge
+      metadata: {}
+      container:
+        name: ''
+        image: 012053003218.dkr.ecr.eu-west-1.amazonaws.com/run_job
+        command:
+          - python
+          - run_job_2.py
+          - clean_up
+        resources:
+          limits:
+            cpu: '6'
+            memory: 14Gi
+          requests:
+            cpu: '6'
+            memory: 14Gi
+      retryStrategy:
+        limit: '10'
+        retryPolicy: Always
+  entrypoint: ensembles
+  arguments:
+    parameters:
+      - name: subfolder
+        value: subfolder
+      - name: tilingfolder
+        value: tilingfolder
+      - name: webviewerfolder
+        value: webviewerfolder

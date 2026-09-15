@@ -1,0 +1,30 @@
+cosmos
+
+	run_folder
+	├── configuration
+		└── config.toml
+		├── stations
+			└── [station_name.toml]
+		├── super_regions
+			└── [superregion_name.toml]
+		├── webviewer_templates
+	├── observations
+	├── scenarios
+		├── [scenario_name]
+			└── scenario.toml
+	├── webviewers
+			
+	model_database
+	├── [region]
+		├── [model_type]
+			├── [model_name]
+				├── input
+				├── misc
+				├── setup
+				├── tiling				
+				└── model.toml
+
+	meteo_database
+	└── meteo_database.toml
+					
+	└── run_cosmos.py
